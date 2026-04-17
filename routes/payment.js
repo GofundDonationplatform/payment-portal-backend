@@ -5,7 +5,27 @@ import Transaction from "../models/Transaction.js";
 const router = express.Router();
 
 
-// ✅ VERIFY PAYMENT (called from frontend)
+// ✅ 1. INITIATE PAYMENT (Frontend → Backend)
+router.post("/initiate", async (req, res) => {
+  try {
+    const { amount, email } = req.body;
+
+    const tx_ref = "GFSSGA_" + Math.floor(Math.random() * 1000000000);
+
+    console.log("💰 Payment Initiated:", { amount, email, tx_ref });
+
+    res.status(200).json({
+      success: true,
+      tx_ref,
+    });
+  } catch (error) {
+    console.error("❌ Initiate Error:", error.message);
+    res.status(500).json({ error: "Failed to initiate payment" });
+  }
+});
+
+
+// ✅ 2. VERIFY PAYMENT (Frontend calls this after payment)
 router.post("/verify", async (req, res) => {
   const { transaction_id } = req.body;
 
@@ -43,23 +63,26 @@ router.post("/verify", async (req, res) => {
         tx_ref: txData.tx_ref,
       });
 
+      console.log("✅ Payment Verified & Saved");
+
       return res.json({ success: true, data: newTx });
     }
 
     res.json({ success: false });
   } catch (error) {
-    console.error("Verify Error:", error.message);
+    console.error("❌ Verify Error:", error.message);
     res.status(500).json({ error: "Verification failed" });
   }
 });
 
 
-// 🔔 WEBHOOK (called by Flutterwave automatically)
+// 🔔 3. WEBHOOK (Flutterwave → Backend automatically)
 router.post("/webhook", async (req, res) => {
   const signature = req.headers["verif-hash"];
 
-  // 🔐 Verify request is from Flutterwave
+  // 🔐 Verify Flutterwave request
   if (signature !== process.env.FLW_HASH) {
+    console.log("❌ Invalid webhook signature");
     return res.status(401).end();
   }
 
@@ -69,7 +92,6 @@ router.post("/webhook", async (req, res) => {
     const txData = payload.data;
 
     try {
-      // 🔐 Prevent duplicate save
       const existing = await Transaction.findOne({
         transaction_id: txData.id,
       });
@@ -84,11 +106,11 @@ router.post("/webhook", async (req, res) => {
           transaction_id: txData.id,
           tx_ref: txData.tx_ref,
         });
-      }
 
-      console.log("✅ Webhook Payment Saved");
+        console.log("✅ Webhook Payment Saved");
+      }
     } catch (err) {
-      console.error("Webhook Error:", err.message);
+      console.error("❌ Webhook Error:", err.message);
     }
   }
 
